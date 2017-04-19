@@ -37,6 +37,22 @@
     (when (has-create-permission? acc accessor "SERVICE")
       (make-resource acc "SERVICE" DEFAULT_DOMAIN name :password pwd))))
 
+(defn add-user
+  "
+  Add a new user with name and password pwd. t determines if it's a
+  regular :user or an :admin.
+
+  Return the newly created user Resource on success else nil.
+  "
+  [acc name pwd t]
+  (let [accessor (.getSessionResource acc)
+        user-class (condp = t
+                     :user "USER"
+                     :admin "ADMIN"
+                     "USER")]
+    (when (has-create-permission? acc accessor user-class)
+      (make-resource acc user-class DEFAULT_DOMAIN name :password pwd))))
+
 (defn has-permission?
   "
   Check if accessor has permission on accessed resource.
@@ -106,6 +122,15 @@
   (let [accessor (.getSessionResource acc)
         svc (get-resource name)]
     (if (not (has-permission? acc accessor svc "*DELETE"))
+      false
+      (remove-resource acc name))))
+
+(defn remove-user
+  "Remove a user with name. Return true on success and false on failure."
+  [^AccessControlContext acc name]
+  (let [accessor (.getSessionResource acc)
+        user (get-resource name)]
+    (if (not (has-permission? acc accessor user "*DELETE"))
       false
       (remove-resource acc name))))
 
