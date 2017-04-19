@@ -1,20 +1,19 @@
 (ns gorilla.access-control-context
   (:import java.lang.IllegalArgumentException
            (com.acciente.oacc AccessControlContext AuthorizationException
-                              PasswordCredentials Resource
-                              ResourceCreatePermissions ResourcePermissions
-                              Resources)
-           (com.acciente.oacc.sql SQLProfile SQLAccessControlContextFactory)))
+                              Resource)
+           (com.acciente.oacc.sql SQLProfile SQLAccessControlContextFactory))
+  (:require [gorilla.credentials :refer [make-password]]
+            [gorilla.permission :refer [get-permission]]
+            [gorilla.resource :refer [get-resource make-resource remove-resource]]))
 
-(declare has-create-permissions?)
+(declare has-create-permission?)
 
 (def ^:private DEFAULT_DOMAIN "APP_DOMAIN")
 
 (defn authenticate
   [^AccessControlContext acc id pwd]
-  (.authenticate acc
-                 (Resources/getInstance id)
-                 (PasswordCredentials/newInstance (.toCharArray pwd))))
+  (.authenticate acc (get-resource id) (make-password pwd)))
 
 (defn add-role
   "
@@ -24,7 +23,7 @@
   [acc name]
   (let [accessor (.getSessionResource acc)]
     (when (has-create-permission? acc accessor "ROLE")
-      (.createResource acc "ROLE" DEFAULT_DOMAIN name))))
+      (make-resource acc "ROLE" DEFAULT_DOMAIN name))))
 
 (defn has-permission?
   "
@@ -38,7 +37,7 @@
     (.hasResourcePermissions acc
                              accessor
                              accessed
-                             #{(ResourcePermissions/getInstance permission)})
+                             #{(get-permission permission)})
     (catch IllegalArgumentException e false)
     (catch AuthorizationException e false)))
 
@@ -55,7 +54,7 @@
                                    accessor
                                    resource-class
                                    DEFAULT_DOMAIN
-                                   #{(ResourceCreatePermissions/getInstance "*CREATE")})
+                                   #{(get-permission "*CREATE")})
     (catch IllegalArgumentException e false)
     (catch AuthorizationException e false)))
 
