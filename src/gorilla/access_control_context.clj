@@ -25,6 +25,18 @@
     (when (has-create-permission? acc accessor "ROLE")
       (make-resource acc "ROLE" DEFAULT_DOMAIN name))))
 
+(defn add-service
+  "
+  Adds a new service with name and the password pwd that is used for
+  authentication.
+
+  Returns the newly created service Resource on success else nil.
+  "
+  [acc name pwd]
+  (let [accessor (.getSessionResource acc)]
+    (when (has-create-permission? acc accessor "SERVICE")
+      (make-resource acc "SERVICE" DEFAULT_DOMAIN name :password pwd))))
+
 (defn has-permission?
   "
   Check if accessor has permission on accessed resource.
@@ -85,6 +97,15 @@
   (let [accessor (.getSessionResource acc)
         role (get-resource name)]
     (if (not (has-permission? acc accessor role "*DELETE"))
+      false
+      (remove-resource acc name))))
+
+(defn remove-service
+  "Remove a service with name. Return true on sucess and false on failure."
+  [^AccessControlContext acc name]
+  (let [accessor (.getSessionResource acc)
+        svc (get-resource name)]
+    (if (not (has-permission? acc accessor svc "*DELETE"))
       false
       (remove-resource acc name))))
 
