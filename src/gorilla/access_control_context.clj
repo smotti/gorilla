@@ -83,9 +83,10 @@
   "Remove a the role with name. Return true on success and false on failure."
   [^AccessControlContext acc name]
   (let [accessor (.getSessionResource acc)
-        role (Resources/getInstance name)]
-    (when (has-permission? acc accessor role "*DELETE")
-      (.deleteResource acc (Resources/getInstance name)))))
+        role (get-resource name)]
+    (if (not (has-permission? acc accessor role "*DELETE"))
+      false
+      (remove-resource acc name))))
 
 (defn unauthenticate
   [^AccessControlContext acc]
