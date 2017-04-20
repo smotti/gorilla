@@ -2,14 +2,20 @@
   (:import java.sql.DriverManager
            java.io.File
            org.sqlite.JDBC
-           com.acciente.oacc.sql.internal.SQLAccessControlSystemInitializer)
-  (:require [clojure.test :as t]
-            [clojure.java.io :as io]
-            [clojure.java.shell :refer [sh]]))
+           com.acciente.oacc.sql.internal.SQLAccessControlSystemInitializer
+           (com.acciente.oacc Resources))
+  (:require [clojure.java.io :as io]
+            [clojure.java.shell :refer [sh]]
+            [clojure.test.check.generators :refer [generate]]
+            [gorilla.test-data-utils :as data]))
 
-(declare initialize-oacc)
+(declare initialize-oacc make-resource)
 
 (def ^:dynamic *DB* nil)
+
+(def DEFAULT-DOMAIN [1 "APP_DOMAIN"])
+
+(def DEFAULT-RESOURCE-IDS {:ADMIN 1 :ROLE 2 :SERVICE 3 :USER 4})
 
 (def DEFAULT-RESOURCE-CLASSES [[1 "ADMIN" true false ["VIEW" "EDIT" "DEACTIVATE"]]
                                [2 "ROLE" false false ["VIEW" "EDIT"]]
@@ -17,6 +23,10 @@
                                [4 "USER" true false ["VIEW" "EDIT" "DEACTIVATE"]]])
 
 (def OACC-PWD "oaccpwd")
+
+(def domain-id #(int (nth % 0)))
+
+(def domain-name #(nth % 1))
 
 (def rsrc-cls-id #(nth % 0))
 
@@ -32,7 +42,13 @@
   (.getFile (io/resource "oacc-db-2.0.0-rc.7/SQLite_3_8/create_tables.sql")))
 
 (def SQL-STRINGS
-  {:insert-rsrc-cls (str "INSERT INTO "
+  {:insert-domain (str "INSERT INTO oac_domain (domainname) VALUES (?)")
+   :insert-rsrc (str "INSERT INTO "
+                     "oac_resource ("
+                     "resourceclassid, "
+                     "domainid) "
+                     "VALUES (?, ?)")
+   :insert-rsrc-cls (str "INSERT INTO "
                          "oac_resourceclass ("
                          "resourceclassname, "
                          "isauthenticatable, "
@@ -68,7 +84,8 @@
                                            (:insert-rsrc-cls SQL-STRINGS))
         insert-rsrc-cls-permission (.prepareStatement
                                     db-conn
-                                    (:insert-rsrc-cls-permission SQL-STRINGS))]
+                                    (:insert-rsrc-cls-permission SQL-STRINGS))
+        insert-domain (.prepareStatement db-conn (:insert-domain SQL-STRINGS))]
     (doseq [cls DEFAULT-RESOURCE-CLASSES]
       (let [id (int (rsrc-cls-id cls))]
         (doto insert-rsrc-cls
@@ -80,7 +97,43 @@
         (doseq [perms (rsrc-cls-perms cls)]
           (doto insert-rsrc-cls-permission
             (.setString 2 perms)
-            (.executeUpdate)))))))
+            (.executeUpdate)))))
+    (doto insert-domain
+      (.setString 1 (domain-name DEFAULT-DOMAIN))
+      (.executeUpdate))))
+
+(defn make-admin
+  []
+  (make-resource :ADMIN #(generate data/admin)))
+
+(defn make-resource
+  "
+  cls is a default resource class: :ADMIN :ROLE :SERVICE :USER
+  g is a fn the generates a map of a resource that belongs to that class
+  "
+  [cls g]
+  (let [stmt (doto (.prepareStatement *DB* (:insert-rsrc SQL-STRINGS))
+               (.setInt 1 (cls DEFAULT-RESOURCE-IDS))
+               (.setInt 2 (domain-id DEFAULT-DOMAIN))
+               (.executeUpdate))
+        id (.getLong (.getGeneratedKeys stmt) 1)
+        rsrc-map (g)
+        rsrc (Resources/getInstance id)]
+    (assoc rsrc-map :id id :resource rsrc)))
+
+(defn make-role
+  []
+  (make-resource :ROLE #(constantly {})))
+
+(defn make-service
+  []
+  (make-resource :SERVICE #(generate data/service)))
+
+(defn make-user
+  []
+  (make-resource :USER #(generate data/user)))
+
+;;; Fixtures
 
 (defn with-sqlite-db
   [f]
