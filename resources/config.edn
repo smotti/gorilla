@@ -1,0 +1,4 @@
+{:db-url "jdbc:postgresql://localhost:5432/oaccdb"
+ :db-user "oaccuser"
+ :db-pwd "oaccpwd"
+ :oacc-root-pwd "oaccpwd"}
