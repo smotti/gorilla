@@ -1,19 +1,20 @@
 (ns gorilla.access-control-context
   (:import java.lang.IllegalArgumentException
            (com.acciente.oacc AccessControlContext AuthorizationException
-                              Resource)
-           (com.acciente.oacc.sql SQLProfile SQLAccessControlContextFactory))
-  (:require [gorilla.credentials :refer [make-password]]
-            [gorilla.permission :refer [get-permission]]
-            [gorilla.resource :refer [get-resource make-resource remove-resource]]))
+                              PasswordCredentials Resource ResourcePermissions
+                              ResourceCreatePermissions Resources)
+           (com.acciente.oacc.sql SQLProfile SQLAccessControlContextFactory)))
 
-(declare has-create-permission?)
+(declare has-create-permission? make-resource remove-resource
+         when-create-permission when-permission)
 
 (def ^:private DEFAULT_DOMAIN "APP_DOMAIN")
 
 (defn authenticate
   [^AccessControlContext acc id pwd]
-  (.authenticate acc (get-resource id) (make-password pwd)))
+  (.authenticate acc
+                 (Resources/getInstance id)
+                 (PasswordCredentials/newInstance pwd)))
 
 (defn add-role
   "
@@ -22,8 +23,7 @@
   "
   [acc name]
   (let [accessor (.getSessionResource acc)]
-    (when (has-create-permission? acc accessor "ROLE")
-      (make-resource acc "ROLE" DEFAULT_DOMAIN name))))
+    (make-resource acc accessor "ROLE" DEFAULT_DOMAIN name)))
 
 (defn add-service
   "
@@ -34,24 +34,18 @@
   "
   [acc name pwd]
   (let [accessor (.getSessionResource acc)]
-    (when (has-create-permission? acc accessor "SERVICE")
-      (make-resource acc "SERVICE" DEFAULT_DOMAIN name :password pwd))))
+    (make-resource acc accessor "SERVICE" DEFAULT_DOMAIN name pwd)))
 
 (defn add-user
   "
-  Add a new user with name and password pwd. t determines if it's a
-  regular :user or an :admin.
+  Add a new user with name and password pwd. cls determines if it's a
+  regular USER or an ADMIN.
 
   Return the newly created user Resource on success else nil.
   "
-  [acc name pwd t]
-  (let [accessor (.getSessionResource acc)
-        user-class (condp = t
-                     :user "USER"
-                     :admin "ADMIN"
-                     "USER")]
-    (when (has-create-permission? acc accessor user-class)
-      (make-resource acc user-class DEFAULT_DOMAIN name :password pwd))))
+  [^AccessControlContext acc name pwd cls]
+  (let [accessor (.getSessionResource acc)]
+    (make-resource acc accessor cls DEFAULT_DOMAIN name pwd)))
 
 (defn has-permission?
   "
@@ -60,12 +54,12 @@
   Note that we use a set for ResourcePermission, because selecting another
   method implementation via type hints doesn't work :/.
   "
-  [acc accessor accessed permission]
+  [permission ^AccessControlContext acc ^Resource accessor ^Resource accessed]
   (try
     (.hasResourcePermissions acc
                              accessor
                              accessed
-                             #{(get-permission permission)})
+                             #{(ResourcePermissions/getInstance permission)})
     (catch IllegalArgumentException e false)
     (catch AuthorizationException e false)))
 
@@ -76,13 +70,13 @@
   Note that we use a set for ResourceCreatePermission, because selecting another
   method implementation via type hints doesn't work :/.
   "
-  [^AccessControlContext acc accessor resource-class]
+  [^AccessControlContext acc ^Resource accessor resource-class]
   (try
     (.hasResourceCreatePermissions acc
                                    accessor
                                    resource-class
                                    DEFAULT_DOMAIN
-                                   #{(get-permission "*CREATE")})
+                                   #{(ResourceCreatePermissions/getInstance "*CREATE")})
     (catch IllegalArgumentException e false)
     (catch AuthorizationException e false)))
 
@@ -107,33 +101,66 @@
                                                              _sql-profile
                                                              auth-provider))))
 
+(defn make-resource
+  ([^AccessControlContext acc ^Resource accessor rsrc-cls rsrc-name]
+   (when-create-permission acc accessor rsrc-cls
+     (.createResource acc rsrc-cls DEFAULT_DOMAIN rsrc-name)))
+  ([^AccessControlContext acc ^Resource accessor rsrc-cls rsrc-name pwd]
+   (when-create-permission acc accessor rsrc-cls
+     (.createResource acc
+                      rsrc-cls
+                      DEFAULT_DOMAIN
+                      rsrc-name
+                      (PasswordCredentials/newInstance pwd)))))
+
+(defn remove-resource
+  [^AccessControlContext acc ^Resource accessor ^Resource accessed]
+  (when-permission "*DELETE" acc accessor accessed
+    (.deleteResource acc accessed)))
+
 (defn remove-role
   "Remove a the role with name. Return true on success and false on failure."
   [^AccessControlContext acc name]
   (let [accessor (.getSessionResource acc)
-        role (get-resource name)]
-    (if (not (has-permission? acc accessor role "*DELETE"))
-      false
-      (remove-resource acc name))))
+        role (Resources/getInstance name)]
+    (remove-resource acc accessor role)))
 
 (defn remove-service
   "Remove a service with name. Return true on sucess and false on failure."
   [^AccessControlContext acc name]
   (let [accessor (.getSessionResource acc)
-        svc (get-resource name)]
-    (if (not (has-permission? acc accessor svc "*DELETE"))
-      false
-      (remove-resource acc name))))
+        svc (Resources/getInstance name)]
+    (remove-resource acc accessor svc)))
 
 (defn remove-user
   "Remove a user with name. Return true on success and false on failure."
   [^AccessControlContext acc name]
   (let [accessor (.getSessionResource acc)
-        user (get-resource name)]
-    (if (not (has-permission? acc accessor user "*DELETE"))
-      false
-      (remove-resource acc name))))
+        user (Resources/getInstance name)]
+    (remove-resource acc accessor user)))
 
 (defn unauthenticate
   [^AccessControlContext acc]
   (.unauthenticate acc))
+
+(defmacro when-create-permission
+  "
+  Just like with-permission but specialized to the *CREATE permission. And it takes
+  a resource class instead of an accessed resource.
+  "
+  [^AccessControlContext acc ^Resource accessor rsrc-cls & body]
+  `(if (not (has-create-permission? acc accessor rsrc-cls))
+     false
+     (do ~@body)))
+
+(defmacro when-permission
+  "
+  Evaluate body if accessor has permission on accessed resource.
+
+  Return false if accessor doesn't have permission. Thus for a more consistent
+  interface the bodies last expression should return a truthy value.
+  "
+  [permission ^AccessControlContext acc ^Resource accessor ^Resource accessed & body]
+  `(if (not (has-permission? ~permission ~acc ~accessor ~accessed))
+     false
+     (do ~@body)))
