@@ -1,4 +1,5 @@
 (set-env!
+ :resource-paths #{"resources"}
  :source-paths #{"src" "test"}
  :dependencies '[[org.clojure/clojure "1.9.0-alpha15"]
                  [org.postgresql/postgresql "42.0.0.jre7"]
