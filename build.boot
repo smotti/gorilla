@@ -1,8 +1,13 @@
 (set-env!
- :source-paths #{"src"}
+ :source-paths #{"src" "test"}
  :dependencies '[[org.clojure/clojure "1.9.0-alpha15"]
                  [org.postgresql/postgresql "42.0.0.jre7"]
-                 [com.acciente.oacc/acciente-oacc "2.0.0-rc.7"]])
+                 [org.xerial/sqlite-jdbc "3.16.1"]
+                 [com.acciente.oacc/acciente-oacc "2.0.0-rc.7"]
+                 [adzerk/boot-test "1.2.0" :scope "test"]
+                 [org.clojure/test.check "0.9.0" :scope "test"]])
+
+(require '[adzerk.boot-test :refer :all])
 
 (task-options!
  pom {:project 'gorilla
@@ -34,7 +39,12 @@
    U db-user USER str "Database user."
    P db-pwd PASSWORD str "Database user password."]
   (with-pre-wrap fs
-    (let [conn (DriverManager/getConnection db-url db-user db-pwd)]
-      (SQLAccessControlSystemInitializer/initializeOACC conn "oacc" (.toCharArray oacc-root-pwd))
+    (let [conn (DriverManager/getConnection db-url db-user db-pwd)
+          rdbms (second (into [] (.split db-url ":")))
+          schema (condp = rdbms
+                   "postgresql" "oacc"
+                   "sqlite" nil
+                   "oacc")]
+      (SQLAccessControlSystemInitializer/initializeOACC conn schema (.toCharArray oacc-root-pwd))
       (.close conn))
     fs))
