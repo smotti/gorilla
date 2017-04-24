@@ -5,8 +5,29 @@
                               ResourceCreatePermissions Resources)
            (com.acciente.oacc.sql SQLProfile SQLAccessControlContextFactory)))
 
-(declare has-create-permission? make-resource remove-resource
-         when-create-permission when-permission)
+(declare has-create-permission? make-resource remove-resource)
+
+(defmacro when-create-permission
+  "
+  Just like with-permission but specialized to the *CREATE permission. And it takes
+  a resource class instead of an accessed resource.
+  "
+  [^AccessControlContext acc ^Resource accessor rsrc-cls & body]
+  `(if (not (has-create-permission? ~acc ~accessor ~rsrc-cls))
+     false
+     (do ~@body)))
+
+(defmacro when-permission
+  "
+  Evaluate body if accessor has permission on accessed resource.
+
+  Return false if accessor doesn't have permission. Thus for a more consistent
+  interface the bodies last expression should return a truthy value.
+  "
+  [permission ^AccessControlContext acc ^Resource accessor ^Resource accessed & body]
+  `(if (not (has-permission? ~permission ~acc ~accessor ~accessed))
+     false
+     (do ~@body)))
 
 (def ^:private DEFAULT_DOMAIN "APP_DOMAIN")
 
@@ -21,7 +42,7 @@
   Adds a new role with name to the system.
   Returns the newly created resources on success else nil.
   "
-  [acc name]
+  [^AccessControlContext acc name]
   (let [accessor (.getSessionResource acc)]
     (make-resource acc accessor "ROLE" DEFAULT_DOMAIN name)))
 
@@ -32,7 +53,7 @@
 
   Returns the newly created service Resource on success else nil.
   "
-  [acc name pwd]
+  [^AccessControlContext acc name pwd]
   (let [accessor (.getSessionResource acc)]
     (make-resource acc accessor "SERVICE" DEFAULT_DOMAIN name pwd)))
 
@@ -43,9 +64,9 @@
 
   Return the newly created user Resource on success else nil.
   "
-  [^AccessControlContext acc name pwd cls]
+  [^AccessControlContext acc name pwd]
   (let [accessor (.getSessionResource acc)]
-    (make-resource acc accessor cls DEFAULT_DOMAIN name pwd)))
+    (make-resource acc accessor "USER" DEFAULT_DOMAIN name pwd)))
 
 (defn has-permission?
   "
@@ -111,7 +132,7 @@
                       rsrc-cls
                       DEFAULT_DOMAIN
                       rsrc-name
-                      (PasswordCredentials/newInstance pwd)))))
+                      (PasswordCredentials/newInstance (.toCharArray pwd))))))
 
 (defn remove-resource
   [^AccessControlContext acc ^Resource accessor ^Resource accessed]
@@ -142,25 +163,3 @@
 (defn unauthenticate
   [^AccessControlContext acc]
   (.unauthenticate acc))
-
-(defmacro when-create-permission
-  "
-  Just like with-permission but specialized to the *CREATE permission. And it takes
-  a resource class instead of an accessed resource.
-  "
-  [^AccessControlContext acc ^Resource accessor rsrc-cls & body]
-  `(if (not (has-create-permission? acc accessor rsrc-cls))
-     false
-     (do ~@body)))
-
-(defmacro when-permission
-  "
-  Evaluate body if accessor has permission on accessed resource.
-
-  Return false if accessor doesn't have permission. Thus for a more consistent
-  interface the bodies last expression should return a truthy value.
-  "
-  [permission ^AccessControlContext acc ^Resource accessor ^Resource accessed & body]
-  `(if (not (has-permission? ~permission ~acc ~accessor ~accessed))
-     false
-     (do ~@body)))

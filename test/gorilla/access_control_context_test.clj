@@ -1,5 +1,6 @@
-(ns gorilla.test-access-control-context
-  (:import java.lang.IllegalArgumentException)
+(ns gorilla.access-control-context-test
+  (:import java.lang.IllegalArgumentException
+           (com.acciente.oacc Resource))
   (:require [gorilla.access-control-context :as sut]
             [gorilla.test-fixtures :refer [make-access-control-ctx make-admin
                                            make-role make-service make-user
@@ -26,3 +27,22 @@
     (let [user (make-user "auth-user")
           acc (make-access-control-ctx)]
       (t/is (nil? (sut/authenticate acc (:name user) (:password user)))))))
+
+(t/deftest test-make-resource
+  (t/testing "make unauthenticatel resources"
+    (let [acc (make-access-control-ctx)
+          make-fn #(sut/make-resource acc
+                                      (.getSessionResource acc)
+                                      %
+                                      (str "test-" %))]
+      (doseq [cls ["ROLE"]]
+        (t/is (instance? Resource (make-fn cls))))))
+  (t/testing "make authenticatable resources"
+    (let [acc (make-access-control-ctx)
+          make-fn #(sut/make-resource acc
+                                      (.getSessionResource acc)
+                                      %
+                                      (str "test-" %)
+                                      (str "test-" %))]
+      (doseq [cls ["ADMIN" "SERVICE" "USER"]]
+        (t/is (instance? Resource (make-fn cls)))))))

@@ -78,7 +78,12 @@
 
 (defn make-access-control-ctx
   []
-  (SQLAccessControlContextFactory/getAccessControlContext *DB* nil (SQLProfile/SQLite_3_8_RECURSIVE)))
+  (doto (SQLAccessControlContextFactory/getAccessControlContext
+         *DB*
+         nil
+         (SQLProfile/SQLite_3_8_RECURSIVE))
+    (.authenticate (Resources/getInstance 0)
+                   (PasswordCredentials/newInstance (.toCharArray OACC-PWD)))))
 
 (defn make-admin
   ([]
