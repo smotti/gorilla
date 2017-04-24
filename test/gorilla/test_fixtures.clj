@@ -3,7 +3,8 @@
            java.io.File
            org.sqlite.JDBC
            com.acciente.oacc.sql.internal.SQLAccessControlSystemInitializer
-           (com.acciente.oacc Resources))
+           (com.acciente.oacc PasswordCredentials Resources)
+           (com.acciente.oacc.sql SQLProfile SQLAccessControlContextFactory))
   (:require [clojure.java.io :as io]
             [clojure.java.shell :refer [sh]]
             [clojure.test.check.generators :refer [generate]]
@@ -11,11 +12,11 @@
 
 (declare initialize-oacc make-resource)
 
+(def ^:dynamic *ACC* nil)
+
 (def ^:dynamic *DB* nil)
 
-(def DEFAULT-DOMAIN [1 "APP_DOMAIN"])
-
-(def DEFAULT-RESOURCE-IDS {:ADMIN 1 :ROLE 2 :SERVICE 3 :USER 4})
+(def DEFAULT-DOMAIN "APP_DOMAIN")
 
 (def DEFAULT-RESOURCE-CLASSES [[1 "ADMIN" true false ["VIEW" "EDIT" "DEACTIVATE"]]
                                [2 "ROLE" false false ["VIEW" "EDIT"]]
@@ -23,10 +24,6 @@
                                [4 "USER" true false ["VIEW" "EDIT" "DEACTIVATE"]]])
 
 (def OACC-PWD "oaccpwd")
-
-(def domain-id #(int (nth % 0)))
-
-(def domain-name #(nth % 1))
 
 (def rsrc-cls-id #(nth % 0))
 
@@ -40,25 +37,6 @@
 
 (def SQLITE-CREATE-TABLES
   (.getFile (io/resource "oacc-db-2.0.0-rc.7/SQLite_3_8/create_tables.sql")))
-
-(def SQL-STRINGS
-  {:insert-domain (str "INSERT INTO oac_domain (domainname) VALUES (?)")
-   :insert-rsrc (str "INSERT INTO "
-                     "oac_resource ("
-                     "resourceclassid, "
-                     "domainid) "
-                     "VALUES (?, ?)")
-   :insert-rsrc-cls (str "INSERT INTO "
-                         "oac_resourceclass ("
-                         "resourceclassname, "
-                         "isauthenticatable, "
-                         "isunauthenticatedcreateallowed) "
-                         "VALUES (?, ?, ?)")
-   :insert-rsrc-cls-permission (str "INSERT INTO "
-                                    "oac_resourceclasspermission ("
-                                    "resourceclassid, "
-                                    "permissionname) "
-                                    "VALUES (?, ?)")})
 
 (defn to-int
   [b]
@@ -80,58 +58,68 @@
   (SQLAccessControlSystemInitializer/initializeOACC db-conn
                                                     nil
                                                     (.toCharArray OACC-PWD))
-  (let [insert-rsrc-cls (.prepareStatement db-conn
-                                           (:insert-rsrc-cls SQL-STRINGS))
-        insert-rsrc-cls-permission (.prepareStatement
-                                    db-conn
-                                    (:insert-rsrc-cls-permission SQL-STRINGS))
-        insert-domain (.prepareStatement db-conn (:insert-domain SQL-STRINGS))]
+  (let [acc (doto (SQLAccessControlContextFactory/getAccessControlContext
+                   db-conn
+                   nil
+                   SQLProfile/SQLite_3_8_RECURSIVE)
+              (.authenticate (Resources/getInstance 0)
+                             (PasswordCredentials/newInstance (.toCharArray
+                                                               OACC-PWD))))]
     (doseq [cls DEFAULT-RESOURCE-CLASSES]
-      (let [id (int (rsrc-cls-id cls))]
-        (doto insert-rsrc-cls
-          (.setString 1 (rsrc-cls-name cls))
-          (.setInt 2 (to-int (rsrc-cls-auth cls)))
-          (.setInt 3 (to-int (rsrc-cls-create cls)))
-          (.executeUpdate))
-        (.setInt insert-rsrc-cls-permission 1 id)
-        (doseq [perms (rsrc-cls-perms cls)]
-          (doto insert-rsrc-cls-permission
-            (.setString 2 perms)
-            (.executeUpdate)))))
-    (doto insert-domain
-      (.setString 1 (domain-name DEFAULT-DOMAIN))
-      (.executeUpdate))))
+      (.createResourceClass acc
+                            (rsrc-cls-name cls)
+                            (rsrc-cls-auth cls)
+                            (rsrc-cls-create cls))
+      (doseq [p (rsrc-cls-perms cls)]
+        (.createResourcePermission acc
+                                   (rsrc-cls-name cls)
+                                   p)))
+    (.createDomain acc DEFAULT-DOMAIN)))
+
+(defn make-access-control-ctx
+  []
+  (SQLAccessControlContextFactory/getAccessControlContext *DB* nil (SQLProfile/SQLite_3_8_RECURSIVE)))
 
 (defn make-admin
-  []
-  (make-resource :ADMIN #(generate data/admin)))
+  ([]
+   (make-admin (generate data/external-id)))
+  ([name]
+   (make-resource "ADMIN" name #(generate data/admin))))
 
 (defn make-resource
-  "
-  cls is a default resource class: :ADMIN :ROLE :SERVICE :USER
-  g is a fn the generates a map of a resource that belongs to that class
-  "
-  [cls g]
-  (let [stmt (doto (.prepareStatement *DB* (:insert-rsrc SQL-STRINGS))
-               (.setInt 1 (cls DEFAULT-RESOURCE-IDS))
-               (.setInt 2 (domain-id DEFAULT-DOMAIN))
-               (.executeUpdate))
-        id (.getLong (.getGeneratedKeys stmt) 1)
-        rsrc-map (g)
-        rsrc (Resources/getInstance id)]
-    (assoc rsrc-map :id id :resource rsrc)))
+  [cls rsrc-name g]
+  (let [rsrc-map (g)
+        password (:password rsrc-map)
+        rsrc (if (not password)
+               (.createResource *ACC* cls DEFAULT-DOMAIN rsrc-name)
+               (.createResource *ACC*
+                                cls
+                                DEFAULT-DOMAIN
+                                rsrc-name
+                                (PasswordCredentials/newInstance
+                                 (.toCharArray password))))]
+    (assoc rsrc-map
+           :id (.getId rsrc)
+           :resource rsrc
+           :name (.getExternalId rsrc))))
 
 (defn make-role
-  []
-  (make-resource :ROLE #(constantly {})))
+  ([]
+   (make-role (generate data/external-id)))
+  ([name]
+   (make-resource "ROLE" name (constantly {}))))
 
 (defn make-service
-  []
-  (make-resource :SERVICE #(generate data/service)))
+  ([]
+   (make-service (generate data/external-id)))
+  ([name]
+   (make-resource "SERVICE" name #(generate data/service))))
 
 (defn make-user
-  []
-  (make-resource :USER #(generate data/user)))
+  ([]
+   (make-user (generate data/external-id)))
+  ([name]
+   (make-resource "USER" name #(generate data/user))))
 
 ;;; Fixtures
 
@@ -142,6 +130,15 @@
                                                   (.getAbsolutePath tmp-db)))]
     (initialize-oacc db-conn)
     (alter-var-root #'*DB* (constantly db-conn))
+    (alter-var-root #'*ACC* (constantly
+                             (doto (SQLAccessControlContextFactory/getAccessControlContext
+                                    db-conn
+                                    nil
+                                    SQLProfile/SQLite_3_8_RECURSIVE)
+                               (.authenticate (Resources/getInstance 0)
+                                              (PasswordCredentials/newInstance (.toCharArray
+                                                                                OACC-PWD))))))
     (f)
     (.close *DB*)
+    (.unauthenticate *ACC*)
     (.delete tmp-db)))

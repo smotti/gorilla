@@ -14,7 +14,7 @@
   [^AccessControlContext acc id pwd]
   (.authenticate acc
                  (Resources/getInstance id)
-                 (PasswordCredentials/newInstance pwd)))
+                 (PasswordCredentials/newInstance (.toCharArray pwd))))
 
 (defn add-role
   "
