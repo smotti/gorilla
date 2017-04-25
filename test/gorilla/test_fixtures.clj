@@ -3,7 +3,7 @@
            java.io.File
            org.sqlite.JDBC
            com.acciente.oacc.sql.internal.SQLAccessControlSystemInitializer
-           (com.acciente.oacc PasswordCredentials Resources)
+           (com.acciente.oacc PasswordCredentials ResourcePermissions Resources)
            (com.acciente.oacc.sql SQLProfile SQLAccessControlContextFactory))
   (:require [clojure.java.io :as io]
             [clojure.java.shell :refer [sh]]
@@ -125,6 +125,12 @@
    (make-user (generate data/external-id)))
   ([name]
    (make-resource "USER" name #(generate data/user))))
+
+(defn set-permissions
+  [perms {accessor :resource :as rsrc1} {accessed :resource}]
+  (let [perms (into #{} (map #(ResourcePermissions/getInstance %) perms))]
+    (.setResourcePermissions *ACC* accessor accessed perms))
+  rsrc1)
 
 ;;; Fixtures
 

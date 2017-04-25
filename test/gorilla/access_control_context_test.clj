@@ -4,6 +4,7 @@
   (:require [gorilla.access-control-context :as sut]
             [gorilla.test-fixtures :refer [make-access-control-ctx make-admin
                                            make-role make-service make-user
+                                           set-permissions
                                            with-sqlite-db]]
             [clojure.test :as t]))
 
@@ -46,3 +47,22 @@
                                       (str "test-" %))]
       (doseq [cls ["ADMIN" "SERVICE" "USER"]]
         (t/is (instance? Resource (make-fn cls)))))))
+
+(t/deftest test-has-permission
+  (let [role (make-role "test-role")]
+    (t/testing "admin has permission to delete role"
+      (let [admin-builder (comp #(set-permissions ["*QUERY" "*DELETE"] % role)
+                                make-admin)
+            admin (admin-builder "test-admin")
+            acc (make-access-control-ctx)]
+        (t/is (sut/has-permission? "*DELETE"
+                                   acc
+                                   (:resource admin)
+                                   (:resource role)))))
+    (t/testing "user doesn't have permission to delete role"
+      (let [user (make-user "test-user")
+            acc (make-access-control-ctx)]
+        (t/is (not (sut/has-permission? "*DELTE"
+                                        acc
+                                        (:resource user)
+                                        (:resource role))))))))
