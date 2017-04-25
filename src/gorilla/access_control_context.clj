@@ -7,6 +7,8 @@
 
 (declare has-create-permission? make-resource remove-resource)
 
+(def ^:private DEFAULT_DOMAIN "APP_DOMAIN")
+
 (defmacro when-create-permission
   "
   Just like with-permission but specialized to the *CREATE permission. And it takes
@@ -29,8 +31,6 @@
      false
      (do ~@body)))
 
-(def ^:private DEFAULT_DOMAIN "APP_DOMAIN")
-
 (defn authenticate
   [^AccessControlContext acc id pwd]
   (try
@@ -42,6 +42,16 @@
     (catch IllegalArgumentException e
       (log/infof "Failed to authenticate resource: %s" id)
       false)))
+
+(defn add-admin
+  "
+  Add a new admin user with name and password pwd.
+
+  Return the newly created user Resource on success else nil.
+  "
+  [^AccessControlContext acc name pwd]
+  (let [accessor (.getSessionResource acc)]
+    (make-resource acc accessor "ADMIN" DEFAULT_DOMAIN name pwd)))
 
 (defn add-role
   "
@@ -65,8 +75,7 @@
 
 (defn add-user
   "
-  Add a new user with name and password pwd. cls determines if it's a
-  regular USER or an ADMIN.
+  Add a new user with name and password pwd.
 
   Return the newly created user Resource on success else nil.
   "
