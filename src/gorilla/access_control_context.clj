@@ -1,9 +1,9 @@
 (ns gorilla.access-control-context
-  (:import java.lang.IllegalArgumentException
-           (com.acciente.oacc AccessControlContext AuthorizationException
+  (:import (com.acciente.oacc AccessControlContext
                               PasswordCredentials Resource ResourcePermissions
                               ResourceCreatePermissions Resources)
-           (com.acciente.oacc.sql SQLProfile SQLAccessControlContextFactory)))
+           (com.acciente.oacc.sql SQLProfile SQLAccessControlContextFactory))
+  (:require [clojure.tools.logging :as log]))
 
 (declare has-create-permission? make-resource remove-resource)
 
@@ -33,9 +33,15 @@
 
 (defn authenticate
   [^AccessControlContext acc id pwd]
-  (.authenticate acc
-                 (Resources/getInstance id)
-                 (PasswordCredentials/newInstance (.toCharArray pwd))))
+  (try
+    (log/infof "Authenticate: %s" id)
+    (.authenticate acc
+                   (Resources/getInstance id)
+                   (PasswordCredentials/newInstance (.toCharArray pwd)))
+    true
+    (catch IllegalArgumentException e
+      (log/infof "Failed to authenticate resource: %s" id)
+      false)))
 
 (defn add-role
   "
@@ -77,12 +83,26 @@
   "
   [permission ^AccessControlContext acc ^Resource accessor ^Resource accessed]
   (try
-    (.hasResourcePermissions acc
-                             accessor
-                             accessed
-                             #{(ResourcePermissions/getInstance permission)})
-    (catch IllegalArgumentException e false)
-    (catch AuthorizationException e false)))
+    (let [has? (.hasResourcePermissions
+                   acc
+                   accessor
+                   accessed
+                   #{(ResourcePermissions/getInstance permission)})]
+      (if (not has?)
+        (do
+          (log/infof "Resource %s has no %s permission for %s"
+                     (.getExternalId accessor)
+                     permission
+                     (.getExternalId accessed))
+          has?)
+        has?))
+    (catch Exception e
+      (log/infof "Resource %s failed %s permission check for %s: %s"
+                 (.getExternalId accessor)
+                 permission
+                 (.getExternalId accessed)
+                 (.getMessage e))
+      false)))
 
 (defn has-create-permission?
   "
@@ -91,15 +111,27 @@
   Note that we use a set for ResourceCreatePermission, because selecting another
   method implementation via type hints doesn't work :/.
   "
-  [^AccessControlContext acc ^Resource accessor resource-class]
+  [^AccessControlContext acc ^Resource accessor rsrc-cls]
   (try
-    (.hasResourceCreatePermissions acc
-                                   accessor
-                                   resource-class
-                                   DEFAULT_DOMAIN
-                                   #{(ResourceCreatePermissions/getInstance "*CREATE")})
-    (catch IllegalArgumentException e false)
-    (catch AuthorizationException e false)))
+    (let [has? (.hasResourceCreatePermissions
+                acc
+                accessor
+                rsrc-cls
+                DEFAULT_DOMAIN
+                #{(ResourceCreatePermissions/getInstance "*CREATE")})]
+      (if (not has?)
+        (do
+          (log/infof "Resource %s has no *CREATE permission for %s"
+                     (.getExternalId accessor)
+                     rsrc-cls)
+          has?)
+        has?))
+    (catch Exception e
+      (log/infof "Resource %s failed *CREATE permission check for %s: %s"
+                 (.getExternalId accessor)
+                 rsrc-cls
+                 (.getMessage e))
+      false)))
 
 (defn make-access-control-context
   ([db-conn sql-profile]
@@ -125,9 +157,11 @@
 (defn make-resource
   ([^AccessControlContext acc ^Resource accessor rsrc-cls rsrc-name]
    (when-create-permission acc accessor rsrc-cls
+     (log/infof "Add %s: %s" rsrc-cls rsrc-name)
      (.createResource acc rsrc-cls DEFAULT_DOMAIN rsrc-name)))
   ([^AccessControlContext acc ^Resource accessor rsrc-cls rsrc-name pwd]
    (when-create-permission acc accessor rsrc-cls
+     (log/infof "Add %s: %s" rsrc-cls rsrc-name)
      (.createResource acc
                       rsrc-cls
                       DEFAULT_DOMAIN
@@ -136,7 +170,11 @@
 
 (defn remove-resource
   [^AccessControlContext acc ^Resource accessor ^Resource accessed]
+
   (when-permission "*DELETE" acc accessor accessed
+    (log/infof "%s removes resource: %s"
+               (.getExternalId accessor)
+               (.getExternalId accessed))
     (.deleteResource acc accessed)))
 
 (defn remove-role
@@ -162,4 +200,5 @@
 
 (defn unauthenticate
   [^AccessControlContext acc]
+  (log/infof "Unauthenticate: %" (.. acc (getSessionResource) (getExternalId)))
   (.unauthenticate acc))

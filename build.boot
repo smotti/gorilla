@@ -6,7 +6,10 @@
                  [org.xerial/sqlite-jdbc "3.16.1"]
                  [com.acciente.oacc/acciente-oacc "2.0.0-rc.7"]
                  [adzerk/boot-test "1.2.0" :scope "test"]
-                 [org.clojure/test.check "0.9.0" :scope "test"]])
+                 [org.clojure/test.check "0.9.0" :scope "test"]
+                 [org.slf4j/slf4j-api "1.8.0-alpha1"]
+                 [org.slf4j/slf4j-log4j12 "1.8.0-alpha1"]
+                 [org.clojure/tools.logging "0.3.1"]])
 
 (require '[adzerk.boot-test :refer :all])
 
