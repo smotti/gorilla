@@ -4,7 +4,8 @@
   (:require [gorilla.access-control-context :as sut]
             [gorilla.test-fixtures :refer [make-access-control-ctx make-admin
                                            make-role make-service make-user
-                                           set-permissions
+                                           set-create-permissions
+                                           set-rsrc-permissions
                                            with-sqlite-db]]
             [clojure.test :as t]))
 
@@ -49,20 +50,39 @@
         (t/is (instance? Resource (make-fn cls)))))))
 
 (t/deftest test-has-permission
-  (let [role (make-role "test-role")]
+  (let [role (make-role "test-role")
+        acc (make-access-control-ctx)]
     (t/testing "admin has permission to delete role"
-      (let [admin-builder (comp #(set-permissions ["*QUERY" "*DELETE"] % role)
+      (let [admin-builder (comp #(set-rsrc-permissions ["*QUERY" "*DELETE"]
+                                                       %
+                                                       role)
                                 make-admin)
-            admin (admin-builder "test-admin")
-            acc (make-access-control-ctx)]
+            admin (admin-builder "test-admin")]
         (t/is (sut/has-permission? "*DELETE"
                                    acc
                                    (:resource admin)
                                    (:resource role)))))
     (t/testing "user doesn't have permission to delete role"
-      (let [user (make-user "test-user")
-            acc (make-access-control-ctx)]
+      (let [user (make-user "test-user")]
         (t/is (not (sut/has-permission? "*DELTE"
                                         acc
                                         (:resource user)
                                         (:resource role))))))))
+
+(t/deftest test-has-create-permission
+  (let [rsrc-cls "ROLE"
+        acc (make-access-control-ctx)]
+    (t/testing "admin has permission to create a role"
+      (let [admin-builder (comp #(set-create-permissions ["*CREATE"]
+                                                         %
+                                                         rsrc-cls)
+                                make-admin)
+            admin (admin-builder "test-admin")]
+        (t/is (sut/has-create-permission? acc
+                                          (:resource admin)
+                                          rsrc-cls))))
+    (t/testing "user doesn't have permission to create a role"
+      (let [user (make-user "test-user")]
+        (t/is (not (sut/has-create-permission? acc
+                                               (:resource user)
+                                               rsrc-cls)))))))
