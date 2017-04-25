@@ -4,6 +4,7 @@
   (:require [gorilla.access-control-context :as sut]
             [gorilla.test-fixtures :refer [make-access-control-ctx make-admin
                                            make-role make-service make-user
+                                           set-cls-permissions
                                            set-create-permissions
                                            set-rsrc-permissions
                                            with-sqlite-db]]
@@ -86,3 +87,87 @@
         (t/is (not (sut/has-create-permission? acc
                                                (:resource user)
                                                rsrc-cls)))))))
+
+(t/deftest test-remove-resource
+  (let [admin-cls "ADMIN"
+        role-cls "ROLE"
+        service-cls "SERVICE"
+        user-cls "USER"
+        acc (make-access-control-ctx)
+        admin-builder (comp #(set-cls-permissions ["*DELETE"] % admin-cls)
+                            #(set-cls-permissions ["*DELETE"] % role-cls)
+                            #(set-cls-permissions ["*DELETE"] % service-cls)
+                            #(set-cls-permissions ["*DELETE"] % user-cls)
+                            make-admin)
+        admin (admin-builder "fst-admin")
+        role (make-role "test-role")
+        service (make-service "test-service")
+        user (make-user "test-user")]
+    (t/testing "role can't remove admin"
+      (t/is (not (sut/remove-resource acc
+                                      (:resource role)
+                                      (:resource admin)))))
+    (t/testing "role can't remove role"
+      (let [another-role (make-role "another-role")]
+        (t/is (not (sut/remove-resource acc
+                                        (:resource role)
+                                        (:resource another-role))))))
+    (t/testing "role can't remove service"
+      (t/is (not (sut/remove-resource acc
+                                      (:resource role)
+                                      (:resource service)))))
+    (t/testing "role can't remove user"
+      (t/is (not (sut/remove-resource acc
+                                      (:resource role)
+                                      (:resource user)))))
+    (t/testing "service can't remove admin"
+      (t/is (not (sut/remove-resource acc
+                                      (:resource service)
+                                      (:resource admin)))))
+    (t/testing "service can't remove role"
+      (t/is (not (sut/remove-resource acc
+                                      (:resource service)
+                                      (:resource role)))))
+    (t/testing "service can't remove service"
+      (let [another-svc (make-service "another-service")]
+        (t/is (not (sut/remove-resource acc
+                                        (:resource service)
+                                        (:resource another-svc))))))
+    (t/testing "service can't remove user"
+      (t/is (not (sut/remove-resource acc
+                                      (:resource service)
+                                      (:resource user)))))
+    (t/testing "user can't remove admin"
+      (t/is (not (sut/remove-resource acc
+                                      (:resource user)
+                                      (:resource admin)))))
+    (t/testing "user can't remove role"
+      (t/is (not (sut/remove-resource acc
+                                      (:resource user)
+                                      (:resource role)))))
+    (t/testing "user can't remove service"
+      (t/is (not (sut/remove-resource acc
+                                      (:resource user)
+                                      (:resource service)))))
+    (t/testing "user can't remove user"
+      (let [another-user (make-user "another-user")]
+        (t/is (not (sut/remove-resource acc
+                                        (:resource user)
+                                        (:resource another-user))))))
+    (t/testing "admin can remove admin"
+      (let [another-admin (make-admin "another-admin")]
+        (t/is (sut/remove-resource acc
+                                   (:resource admin)
+                                   (:resource another-admin)))))
+    (t/testing "admin can remove role"
+      (t/is (sut/remove-resource acc
+                                 (:resource admin)
+                                 (:resource role))))
+    (t/testing "admin can remove service"
+      (t/is (sut/remove-resource acc
+                                 (:resource admin)
+                                 (:resource service))))
+    (t/testing "admin can remove user"
+      (t/is (sut/remove-resource acc
+                                 (:resource admin)
+                                 (:resource user))))))

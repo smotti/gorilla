@@ -127,6 +127,12 @@
   ([name]
    (make-resource "USER" name #(generate data/user))))
 
+(defn set-cls-permissions
+  [perms {accessor :resource :as m} cls]
+  (let [perms (into #{} (map #(ResourcePermissions/getInstance %) perms))]
+    (.setGlobalResourcePermissions *ACC* accessor cls DEFAULT-DOMAIN perms))
+  m)
+
 (defn set-create-permissions
   [perms {accessor :resource :as m} cls]
   (let [perms (into #{} (map #(ResourceCreatePermissions/getInstance %) perms))]
