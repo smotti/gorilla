@@ -37,7 +37,8 @@
 (def rsrc-cls-perms #(nth % 4))
 
 (def SQLITE-CREATE-TABLES
-  (.getFile (io/resource "oacc-db-2.0.0-rc.7/SQLite_3_8/create_tables.sql")))
+  [(.getFile (io/resource "gorilla-db/sqlite/gorilla_create_tables.sql"))
+   (.getFile (io/resource "gorilla-db/sqlite/oacc_create_tables.sql"))])
 
 (defn to-int
   [b]
@@ -46,12 +47,13 @@
 (defn create-tmp-db
   []
   (let [tmp-db-file (File/createTempFile "test_" ".sqlite")]
-    (sh "/bin/sh"
-        "-c"
-        (str "sqlite3 "
-             (.getAbsolutePath tmp-db-file)
-             " < "
-             SQLITE-CREATE-TABLES))
+    (doseq [script SQLITE-CREATE-TABLES]
+      (sh "/bin/sh"
+         "-c"
+         (str "sqlite3 "
+              (.getAbsolutePath tmp-db-file)
+              " < "
+              script)))
     tmp-db-file))
 
 (defn initialize-oacc

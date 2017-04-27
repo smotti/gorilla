@@ -1,0 +1,10 @@
+CREATE USER gorillauser WITH PASSWORD 'gorillapwd' CONNECTION LIMIT -1;
+
+GRANT CONNECT ON DATABASE gorilladb TO gorillauser;
+
+GRANT USAGE ON SCHEMA gorilla TO gorillauser;
+GRANT USAGE ON SCHEMA oacc TO gorillauser;
+
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA oacc TO gorillauser;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA oacc TO gorillauser;
