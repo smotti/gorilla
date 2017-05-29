@@ -18,10 +18,8 @@
  pom {:project 'gorilla
       :description "An identity and access management service"
       :version "0.1.0"
-      :license {"CLOSED" "CLOSED"}
-      :developers {"John Liu" "john.liu@medicustek.com"
-                   "Jordan Lin" "jordan.lin@medicustek.com"
-                   "William Ott" "william.ott@medicustek.com"}})
+      :license {"GPLv3" "https://www.gnu.org/licenses/gpl-3.0.en.html"}
+      :developers {"William Ott" "wottis@gmail.com"}})
 
 (deftask build
   []
